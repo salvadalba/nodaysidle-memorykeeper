@@ -1,0 +1,338 @@
+import XCTest
+
+/// UI Tests for MemoryKeeper critical flows
+/// Note: XCUITests require running from Xcode with a built app bundle.
+/// These tests use accessibility identifiers defined in the views.
+final class MemoryKeeperUITests: XCTestCase {
+
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+    }
+
+    override func tearDownWithError() throws {
+        app = nil
+    }
+
+    // MARK: - Library Import Flow Tests
+
+    /// Tests: permission -> scan -> grid
+    func testLibraryImportFlow() throws {
+        app.launch()
+
+        // If onboarding is shown, complete it
+        if app.staticTexts["Welcome to MemoryKeeper"].exists {
+            // Navigate through onboarding
+            let nextButton = app.buttons["Next"]
+            if nextButton.exists {
+                nextButton.tap()
+                nextButton.tap()
+            }
+
+            // Grant permission if needed
+            let grantButton = app.buttons["Grant Photo Access"]
+            if grantButton.exists {
+                grantButton.tap()
+                // Handle system permission dialog in test environment
+            }
+
+            // Complete onboarding
+            let getStartedButton = app.buttons["Get Started"]
+            if getStartedButton.waitForExistence(timeout: 5) {
+                getStartedButton.tap()
+            }
+        }
+
+        // Verify main window appears
+        XCTAssertTrue(app.windows["MemoryKeeper main window"].waitForExistence(timeout: 10))
+
+        // Verify sidebar exists
+        XCTAssertTrue(app.staticTexts["All Photos"].exists || app.buttons["All Photos"].exists)
+    }
+
+    // MARK: - Duplicate Review Flow Tests
+
+    /// Tests: list -> compare -> resolve
+    func testDuplicateReviewFlow() throws {
+        app.launch()
+
+        // Skip onboarding if present
+        skipOnboardingIfNeeded()
+
+        // Navigate to Duplicates in sidebar
+        let duplicatesItem = app.buttons["Duplicates"]
+        if duplicatesItem.waitForExistence(timeout: 5) {
+            duplicatesItem.tap()
+
+            // Verify duplicates view appears
+            let duplicatesTitle = app.staticTexts["Duplicates"]
+            XCTAssertTrue(duplicatesTitle.waitForExistence(timeout: 5))
+        }
+
+        // If duplicate groups exist, test interaction
+        let duplicateGroup = app.buttons.matching(identifier: "DuplicateGroupCell").firstMatch
+        if duplicateGroup.waitForExistence(timeout: 3) {
+            duplicateGroup.tap()
+
+            // Verify comparison view appears
+            XCTAssertTrue(app.staticTexts["Select photos to keep"].waitForExistence(timeout: 5))
+
+            // Test resolution actions
+            let keepSelectedButton = app.buttons["Keep Selected"]
+            if keepSelectedButton.exists {
+                // Don't actually tap to avoid modifying test data
+                XCTAssertTrue(keepSelectedButton.isEnabled)
+            }
+        }
+    }
+
+    // MARK: - Memory Discovery Flow Tests
+
+    /// Tests: open -> view -> navigate
+    func testMemoryDiscoveryFlow() throws {
+        app.launch()
+
+        // Skip onboarding if present
+        skipOnboardingIfNeeded()
+
+        // Navigate to Memories in sidebar
+        let memoriesItem = app.buttons["Memories"]
+        if memoriesItem.waitForExistence(timeout: 5) {
+            memoriesItem.tap()
+
+            // Verify memories feed appears
+            let memoriesTitle = app.staticTexts["Memories"]
+            XCTAssertTrue(memoriesTitle.waitForExistence(timeout: 5))
+        }
+
+        // If a memory card exists, test interaction
+        let memoryCard = app.buttons.matching(identifier: "MemoryCard").firstMatch
+        if memoryCard.waitForExistence(timeout: 3) {
+            memoryCard.tap()
+
+            // Verify slideshow appears
+            XCTAssertTrue(app.otherElements["Memory slideshow"].waitForExistence(timeout: 5))
+
+            // Test navigation controls
+            let nextButton = app.buttons["Next photo"]
+            if nextButton.exists && nextButton.isEnabled {
+                nextButton.tap()
+            }
+
+            // Close slideshow
+            let closeButton = app.buttons["Close slideshow"]
+            if closeButton.exists {
+                closeButton.tap()
+            }
+        }
+    }
+
+    // MARK: - Photo Grid Navigation Tests
+
+    func testPhotoGridNavigation() throws {
+        app.launch()
+
+        // Skip onboarding if present
+        skipOnboardingIfNeeded()
+
+        // Verify grid is visible
+        let photoGrid = app.collectionViews.firstMatch
+        XCTAssertTrue(photoGrid.waitForExistence(timeout: 10))
+
+        // Test keyboard navigation
+        app.typeKey(.rightArrow, modifierFlags: [])
+        app.typeKey(.downArrow, modifierFlags: [])
+        app.typeKey(.return, modifierFlags: [])
+
+        // If detail view opened, verify and close
+        let detailView = app.otherElements["Photo detail view"]
+        if detailView.waitForExistence(timeout: 3) {
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertFalse(detailView.exists)
+        }
+    }
+
+    // MARK: - Settings Tests
+
+    func testSettingsAccess() throws {
+        app.launch()
+
+        // Skip onboarding if present
+        skipOnboardingIfNeeded()
+
+        // Open settings via keyboard shortcut
+        app.typeKey(",", modifierFlags: .command)
+
+        // Verify settings window appears
+        let settingsWindow = app.windows["Settings"]
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
+
+        // Verify tabs exist
+        XCTAssertTrue(app.buttons["General"].exists)
+        XCTAssertTrue(app.buttons["Analysis"].exists)
+        XCTAssertTrue(app.buttons["Appearance"].exists)
+
+        // Close settings
+        app.typeKey("w", modifierFlags: .command)
+    }
+
+    // MARK: - Menu Bar Tests
+
+    func testMenuBarWidget() throws {
+        app.launch()
+
+        // Skip onboarding if present
+        skipOnboardingIfNeeded()
+
+        // Click menu bar item
+        let menuBarItem = app.menuBarItems["MemoryKeeper"]
+        if menuBarItem.waitForExistence(timeout: 5) {
+            menuBarItem.click()
+
+            // Verify popover content
+            XCTAssertTrue(app.staticTexts["MemoryKeeper"].waitForExistence(timeout: 3))
+
+            // Test quick actions
+            let openButton = app.buttons["Open MemoryKeeper"]
+            XCTAssertTrue(openButton.exists)
+
+            let settingsButton = app.buttons["Settings..."]
+            XCTAssertTrue(settingsButton.exists)
+
+            // Close popover
+            app.typeKey(.escape, modifierFlags: [])
+        }
+    }
+
+    // MARK: - Onboarding Flow Tests
+
+    func testOnboardingFlow() throws {
+        // Launch with fresh state (no prior onboarding)
+        app.launchArguments.append("--reset-onboarding")
+        app.launch()
+
+        // Verify welcome page
+        XCTAssertTrue(app.staticTexts["Welcome to MemoryKeeper"].waitForExistence(timeout: 5))
+
+        // Navigate to features page
+        app.buttons["Next"].tap()
+        XCTAssertTrue(app.staticTexts["What MemoryKeeper Does"].waitForExistence(timeout: 3))
+
+        // Navigate to permission page
+        app.buttons["Next"].tap()
+        XCTAssertTrue(app.staticTexts["Photo Library Access"].waitForExistence(timeout: 3))
+
+        // Navigate to ready page (skip permission for test)
+        app.buttons["Next"].tap()
+        XCTAssertTrue(app.staticTexts["You're All Set!"].waitForExistence(timeout: 3))
+
+        // Complete onboarding
+        app.buttons["Get Started"].tap()
+
+        // Verify main app is shown
+        XCTAssertTrue(app.windows["MemoryKeeper main window"].waitForExistence(timeout: 5))
+    }
+
+    func testOnboardingSkip() throws {
+        app.launchArguments.append("--reset-onboarding")
+        app.launch()
+
+        // Verify onboarding is shown
+        XCTAssertTrue(app.staticTexts["Welcome to MemoryKeeper"].waitForExistence(timeout: 5))
+
+        // Skip onboarding
+        app.buttons["Skip"].tap()
+
+        // Verify main app is shown
+        XCTAssertTrue(app.windows["MemoryKeeper main window"].waitForExistence(timeout: 5))
+    }
+
+    // MARK: - Accessibility Tests
+
+    func testAccessibilityLabels() throws {
+        app.launch()
+        skipOnboardingIfNeeded()
+
+        // Verify key elements have accessibility labels
+        let mainWindow = app.windows.firstMatch
+        XCTAssertTrue(mainWindow.exists)
+
+        // Check sidebar accessibility
+        let sidebar = app.groups["Sidebar"]
+        if sidebar.exists {
+            XCTAssertFalse(sidebar.label.isEmpty)
+        }
+
+        // Check that photos in grid have labels
+        let photoCell = app.cells.firstMatch
+        if photoCell.waitForExistence(timeout: 3) {
+            XCTAssertFalse(photoCell.label.isEmpty)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func skipOnboardingIfNeeded() {
+        let skipButton = app.buttons["Skip"]
+        if skipButton.waitForExistence(timeout: 2) {
+            skipButton.tap()
+        }
+
+        let getStartedButton = app.buttons["Get Started"]
+        if getStartedButton.waitForExistence(timeout: 2) {
+            getStartedButton.tap()
+        }
+    }
+}
+
+// MARK: - Performance Tests
+
+final class MemoryKeeperPerformanceTests: XCTestCase {
+
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+    }
+
+    func testLaunchPerformance() throws {
+        if #available(macOS 13.0, *) {
+            measure(metrics: [XCTApplicationLaunchMetric()]) {
+                app.launch()
+            }
+        }
+    }
+
+    func testScrollPerformance() throws {
+        app.launch()
+
+        // Skip onboarding
+        let skipButton = app.buttons["Skip"]
+        if skipButton.waitForExistence(timeout: 2) {
+            skipButton.tap()
+        }
+
+        let photoGrid = app.collectionViews.firstMatch
+        guard photoGrid.waitForExistence(timeout: 10) else {
+            XCTFail("Photo grid did not appear")
+            return
+        }
+
+        measure {
+            // Scroll down
+            photoGrid.swipeUp()
+            photoGrid.swipeUp()
+            photoGrid.swipeUp()
+
+            // Scroll back up
+            photoGrid.swipeDown()
+            photoGrid.swipeDown()
+            photoGrid.swipeDown()
+        }
+    }
+}

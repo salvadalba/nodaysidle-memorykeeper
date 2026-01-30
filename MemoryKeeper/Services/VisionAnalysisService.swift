@@ -38,37 +38,50 @@ final class VisionAnalysisService {
     private func loadImage(from asset: PHAsset) async throws -> CGImage {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = false
+        options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
         // Request a reasonable size for feature print (doesn't need full resolution)
         let targetSize = CGSize(width: 1024, height: 1024)
 
-        return try await withCheckedThrowingContinuation { continuation in
+        // Use AsyncStream to handle multiple callbacks from PHImageManager
+        var bestImage: CGImage?
+        for await image in loadImageStream(asset: asset, targetSize: targetSize, options: options) {
+            bestImage = image
+        }
+
+        guard let result = bestImage else {
+            throw VisionAnalysisError.imageLoadFailed("No image returned")
+        }
+        return result
+    }
+
+    private func loadImageStream(asset: PHAsset, targetSize: CGSize, options: PHImageRequestOptions) -> AsyncStream<CGImage> {
+        AsyncStream { continuation in
+            var hasFinished = false
+
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
-                if let error = info?[PHImageErrorKey] as? Error {
-                    continuation.resume(throwing: VisionAnalysisError.imageLoadFailed(error.localizedDescription))
-                    return
-                }
-
-                // Skip degraded images
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if isDegraded {
-                    return
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+
+                if let nsImage = image,
+                   let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                    continuation.yield(cgImage)
                 }
 
-                guard let nsImage = image,
-                      let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                    continuation.resume(throwing: VisionAnalysisError.imageLoadFailed("No image returned"))
-                    return
+                // Finish the stream when we get the final image or an error
+                if !isDegraded || isCancelled || hasError {
+                    if !hasFinished {
+                        hasFinished = true
+                        continuation.finish()
+                    }
                 }
-
-                continuation.resume(returning: cgImage)
             }
         }
     }

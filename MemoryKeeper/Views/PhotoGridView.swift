@@ -13,6 +13,7 @@ struct PhotoGridView: View {
 
     @State private var focusedIndex: Int = 0
     @State private var showDetail = false
+    @State private var authorizationStatus: PHAuthorizationStatus = .notDetermined
 
     private var gridItemSize: CGFloat {
         switch thumbnailSize {
@@ -33,10 +34,21 @@ struct PhotoGridView: View {
     var body: some View {
         Group {
             if photos.isEmpty {
-                emptyState
+                // Only show permission-related empty state if actually not authorized
+                if authorizationStatus == .denied || authorizationStatus == .restricted {
+                    permissionDeniedState
+                } else if authorizationStatus == .notDetermined {
+                    requestPermissionState
+                } else {
+                    // Authorized but no photos yet - show loading or truly empty library state
+                    emptyLibraryState
+                }
             } else {
                 photoGrid
             }
+        }
+        .onAppear {
+            authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         }
     }
 
@@ -82,19 +94,9 @@ struct PhotoGridView: View {
             }
         }
         .sheet(isPresented: $showDetail) {
-            if let photo = selectedPhoto,
-               let index = photos.firstIndex(where: { $0.assetIdentifier == photo.assetIdentifier }) {
-                PhotoNavigationView(
-                    photos: photos,
-                    currentIndex: .init(
-                        get: { index },
-                        set: { newIndex in
-                            if let newPhoto = photos[safe: newIndex] {
-                                selectedPhoto = newPhoto
-                                focusedIndex = newIndex
-                            }
-                        }
-                    ),
+            if let photo = selectedPhoto {
+                PhotoDetailView(
+                    photo: photo,
                     isPresented: $showDetail,
                     namespace: namespace
                 )
@@ -102,26 +104,68 @@ struct PhotoGridView: View {
         }
     }
 
-    private var emptyState: some View {
+    private var permissionDeniedState: some View {
         VStack(spacing: 40) {
-            // Vintage camera illustration
             VintageCameraIllustration()
                 .frame(width: 240, height: 200)
 
             VStack(spacing: 16) {
-                Text("Your Photo Library Awaits")
+                Text("Photo Access Required")
                     .font(Typography.heroSmall)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.memoryTextPrimary)
 
-                Text("Grant access to your photos and let us help you rediscover your cherished memories")
+                Text("MemoryKeeper needs access to your photos. Please grant access in System Settings.")
                     .font(Typography.bodyMedium)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.memoryTextSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
             }
 
             Button {
                 openPhotoPrivacySettings()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "gear")
+                    Text("Open System Settings")
+                }
+                .font(Typography.bodyMedium)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.memoryAccent)
+
+            HStack(spacing: 6) {
+                Image(systemName: "lock.shield")
+                    .font(.caption)
+                Text("Your photos stay on your device. Always.")
+                    .font(Typography.metadataSmall)
+            }
+            .foregroundStyle(Color.memoryFaded)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.memoryWarmLight)
+    }
+
+    private var requestPermissionState: some View {
+        VStack(spacing: 40) {
+            VintageCameraIllustration()
+                .frame(width: 240, height: 200)
+
+            VStack(spacing: 16) {
+                Text("Your Photo Library Awaits")
+                    .font(Typography.heroSmall)
+                    .foregroundStyle(Color.memoryTextPrimary)
+
+                Text("Grant access to your photos and let us help you rediscover your cherished memories")
+                    .font(Typography.bodyMedium)
+                    .foregroundStyle(Color.memoryTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
+
+            Button {
+                requestPhotoAccess()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "photo.badge.plus")
@@ -134,7 +178,6 @@ struct PhotoGridView: View {
             .buttonStyle(.borderedProminent)
             .tint(Color.memoryAccent)
 
-            // Privacy note
             HStack(spacing: 6) {
                 Image(systemName: "lock.shield")
                     .font(.caption)
@@ -145,13 +188,41 @@ struct PhotoGridView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.memoryWarmLight)
-        .accessibilityLabel("No photos available")
-        .accessibilityHint("Grant photo library access in System Settings to view your photos")
+    }
+
+    private var emptyLibraryState: some View {
+        VStack(spacing: 40) {
+            VintageCameraIllustration()
+                .frame(width: 240, height: 200)
+
+            VStack(spacing: 16) {
+                Text("No Photos Yet")
+                    .font(Typography.heroSmall)
+                    .foregroundStyle(Color.memoryTextPrimary)
+
+                Text("Your photo library appears to be empty. Add some photos to get started!")
+                    .font(Typography.bodyMedium)
+                    .foregroundStyle(Color.memoryTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.memoryWarmLight)
     }
 
     private func openPhotoPrivacySettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos") {
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func requestPhotoAccess() {
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            await MainActor.run {
+                authorizationStatus = status
+            }
         }
     }
 }
@@ -273,45 +344,59 @@ struct PhotoThumbnailCell: View {
     private func loadThumbnail() async {
         loadPhase = .loading
 
-        // In production, this would use ThumbnailService
-        // For now, attempt to load from PHAsset
-        do {
-            let fetchResult = PHAsset.fetchAssets(
-                withLocalIdentifiers: [photo.assetIdentifier],
-                options: nil
-            )
+        let fetchResult = PHAsset.fetchAssets(
+            withLocalIdentifiers: [photo.assetIdentifier],
+            options: nil
+        )
 
-            guard let asset = fetchResult.firstObject else {
-                loadPhase = .loaded
-                return
+        guard let asset = fetchResult.firstObject else {
+            loadPhase = .loaded
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
+
+        let targetSize = CGSize(width: size * 2, height: size * 2) // 2x for Retina
+
+        // Use async stream to handle multiple callbacks from PHImageManager
+        for await image in loadImageStream(asset: asset, targetSize: targetSize, options: options) {
+            await MainActor.run {
+                self.thumbnail = image
+                withAnimation(reduceMotion ? nil : .memoryEaseOut) {
+                    loadPhase = .loaded
+                }
             }
+        }
+    }
 
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .fastFormat
-            options.isNetworkAccessAllowed = false
-            options.isSynchronous = false
+    private func loadImageStream(asset: PHAsset, targetSize: CGSize, options: PHImageRequestOptions) -> AsyncStream<NSImage> {
+        AsyncStream { continuation in
+            var hasFinished = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
 
-            let targetSize = CGSize(width: size * 2, height: size * 2) // 2x for Retina
+                if let image = image {
+                    continuation.yield(image)
+                }
 
-            thumbnail = await withCheckedContinuation { continuation in
-                PHImageManager.default().requestImage(
-                    for: asset,
-                    targetSize: targetSize,
-                    contentMode: .aspectFill,
-                    options: options
-                ) { image, info in
-                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                    if !isDegraded {
-                        continuation.resume(returning: image)
+                // Finish the stream when we get the final image or an error
+                if !isDegraded || isCancelled || hasError {
+                    if !hasFinished {
+                        hasFinished = true
+                        continuation.finish()
                     }
                 }
             }
-
-            withAnimation(reduceMotion ? nil : .memoryEaseOut) {
-                loadPhase = .loaded
-            }
-        } catch {
-            loadPhase = .loaded
         }
     }
 }

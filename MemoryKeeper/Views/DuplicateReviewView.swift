@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Photos
 
 struct DuplicateReviewView: View {
     @Query(filter: #Predicate<DuplicateGroup> { !$0.isResolved },
@@ -10,63 +11,69 @@ struct DuplicateReviewView: View {
     @State private var selectedGroup: DuplicateGroup?
 
     var body: some View {
-        HSplitView {
-            // Groups list
-            duplicateGroupsList
-                .frame(minWidth: 250, maxWidth: 350)
-
-            // Comparison view
-            if let group = selectedGroup {
-                DuplicateComparisonView(group: group)
+        Group {
+            if duplicateGroups.isEmpty {
+                // Full-screen empty state when no duplicates
+                emptyState
             } else {
-                emptySelection
+                // Split view only when there are duplicates to review
+                HSplitView {
+                    duplicateGroupsList
+                        .frame(minWidth: 250, maxWidth: 350)
+
+                    if let group = selectedGroup {
+                        DuplicateComparisonView(group: group)
+                    } else {
+                        emptySelection
+                    }
+                }
             }
         }
+        .background(Color.memoryWarmLight)
     }
 
     private var duplicateGroupsList: some View {
         List(selection: $selectedGroup) {
-            if duplicateGroups.isEmpty {
-                emptyState
-            } else {
-                ForEach(duplicateGroups, id: \.self) { group in
-                    DuplicateGroupRow(group: group)
-                        .tag(group)
-                }
+            ForEach(duplicateGroups, id: \.self) { group in
+                DuplicateGroupRow(group: group)
+                    .tag(group)
             }
         }
         .listStyle(.inset)
-        .navigationTitle("Duplicates")
     }
 
     private var emptyState: some View {
-        VStack(spacing: 24) {
-            // Clean library celebration illustration
+        VStack(spacing: 32) {
             CleanLibraryIllustration()
-                .frame(width: 180, height: 140)
+                .frame(width: 200, height: 160)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 Text("All Clear!")
-                    .font(Typography.sectionSmall)
-                    .foregroundStyle(.primary)
+                    .font(Typography.heroSmall)
+                    .foregroundStyle(Color.memoryTextPrimary)
 
                 Text("No duplicate photos found.\nYour library is beautifully organized.")
-                    .font(Typography.bodySmall)
-                    .foregroundStyle(.secondary)
+                    .font(Typography.bodyMedium)
+                    .foregroundStyle(Color.memoryTextSecondary)
                     .multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-        .listRowBackground(Color.clear)
     }
 
     private var emptySelection: some View {
-        ContentUnavailableView(
-            "Select a Group",
-            systemImage: "square.on.square",
-            description: Text("Select a duplicate group to compare photos")
-        )
+        VStack(spacing: 16) {
+            Image(systemName: "square.on.square")
+                .font(.system(size: 48))
+                .foregroundStyle(Color.memoryFaded)
+            Text("Select a Group")
+                .font(Typography.sectionSmall)
+                .foregroundStyle(Color.memoryTextPrimary)
+            Text("Select a duplicate group to compare photos")
+                .font(Typography.bodySmall)
+                .foregroundStyle(Color.memoryTextSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -123,6 +130,8 @@ struct DuplicateComparisonView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedPhotos: Set<String> = []
     @State private var showConfirmation = false
+    @State private var deleteError: String?
+    @State private var showError = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -155,10 +164,18 @@ struct DuplicateComparisonView: View {
         .alert("Remove Duplicates?", isPresented: $showConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Move to Trash", role: .destructive) {
-                resolveGroup()
+                Task {
+                    await deleteUnselectedPhotos()
+                }
             }
         } message: {
-            Text("The unselected photos will be moved to Trash. This can be undone.")
+            let count = group.photos.count - selectedPhotos.count
+            Text("\(count) photo(s) will be moved to Trash. This can be undone in Photos app.")
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(deleteError ?? "An error occurred")
         }
     }
 
@@ -188,7 +205,7 @@ struct DuplicateComparisonView: View {
             Spacer()
 
             Button("Skip") {
-                // Mark as resolved without action
+                skipGroup()
             }
             .buttonStyle(.borderless)
 
@@ -211,11 +228,52 @@ struct DuplicateComparisonView: View {
         }
     }
 
-    private func resolveGroup() {
-        // Mark group as resolved
+    private func skipGroup() {
         group.isResolved = true
         group.resolvedDate = Date()
         try? modelContext.save()
+    }
+
+    private func deleteUnselectedPhotos() async {
+        // Get asset identifiers to delete BEFORE modifying anything
+        let toDelete = group.photos
+            .filter { !selectedPhotos.contains($0.assetIdentifier) }
+            .map { $0.assetIdentifier }
+
+        // Mark group as resolved FIRST so it disappears from list immediately
+        // This prevents SwiftUI from trying to render while data is changing
+        await MainActor.run {
+            group.isResolved = true
+            group.resolvedDate = Date()
+            try? modelContext.save()
+        }
+
+        guard !toDelete.isEmpty else {
+            return
+        }
+
+        // Fetch the PHAssets
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: toDelete, options: nil)
+        var assetsToDelete: [PHAsset] = []
+        fetchResult.enumerateObjects { asset, _, _ in
+            assetsToDelete.append(asset)
+        }
+
+        guard !assetsToDelete.isEmpty else {
+            return
+        }
+
+        // Delete from Photos library in background
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets(assetsToDelete as NSFastEnumeration)
+            }
+        } catch {
+            await MainActor.run {
+                deleteError = error.localizedDescription
+                showError = true
+            }
+        }
     }
 }
 
@@ -225,24 +283,41 @@ struct DuplicatePhotoCard: View {
     let isRecommended: Bool
     let onTap: () -> Void
 
+    @State private var thumbnail: NSImage?
+    @State private var isLoading = true
+
     var body: some View {
         VStack(spacing: 8) {
             // Photo
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.quaternary)
-                    .aspectRatio(1, contentMode: .fit)
-                    .overlay {
-                        Image(systemName: "photo")
-                            .font(.largeTitle)
-                            .foregroundStyle(.tertiary)
-                    }
+                if let thumbnail = thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 180, height: 180)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.quaternary)
+                        .frame(width: 180, height: 180)
+                        .overlay {
+                            if isLoading {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "photo")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                }
 
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
                     .foregroundStyle(isSelected ? .green : .secondary)
                     .padding(8)
+                    .background(Color.black.opacity(0.3), in: Circle())
             }
             .overlay {
                 if isSelected {
@@ -264,11 +339,6 @@ struct DuplicatePhotoCard: View {
                         .font(Typography.metadataSmall)
                         .foregroundStyle(.secondary)
                 }
-
-                // File info would go here
-                Text("Photo details")
-                    .font(Typography.metadataSmall)
-                    .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -276,6 +346,61 @@ struct DuplicatePhotoCard: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
         .shadow(color: .memoryShadow, radius: isSelected ? 8 : 2)
         .onTapGesture(perform: onTap)
+        .task {
+            await loadThumbnail()
+        }
+    }
+
+    private func loadThumbnail() async {
+        let fetchResult = PHAsset.fetchAssets(
+            withLocalIdentifiers: [photo.assetIdentifier],
+            options: nil
+        )
+
+        guard let asset = fetchResult.firstObject else {
+            await MainActor.run { isLoading = false }
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.isNetworkAccessAllowed = true
+
+        let targetSize = CGSize(width: 360, height: 360)
+
+        for await image in loadImageStream(asset: asset, targetSize: targetSize, options: options) {
+            await MainActor.run {
+                self.thumbnail = image
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func loadImageStream(asset: PHAsset, targetSize: CGSize, options: PHImageRequestOptions) -> AsyncStream<NSImage> {
+        AsyncStream { continuation in
+            var hasFinished = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+
+                if let image = image {
+                    continuation.yield(image)
+                }
+
+                if !isDegraded || isCancelled || hasError {
+                    if !hasFinished {
+                        hasFinished = true
+                        continuation.finish()
+                    }
+                }
+            }
+        }
     }
 }
 

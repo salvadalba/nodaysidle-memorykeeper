@@ -4,6 +4,7 @@ import SwiftData
 struct MenuBarView: View {
     @Query(sort: \Memory.createdDate, order: .reverse) private var memories: [Memory]
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettingsAction
 
     private var todaysMemory: Memory? {
         memories.first { Calendar.current.isDateInToday($0.createdDate) }
@@ -186,11 +187,18 @@ struct MenuBarView: View {
     }
 
     private func openMainApp() {
-        NSWorkspace.shared.open(URL(string: "memorykeeper://open")!)
+        // Activate the app and bring main window to front
+        NSApp.activate(ignoringOtherApps: true)
+        // Open or focus the main window
+        if let window = NSApp.windows.first(where: { $0.title.contains("MemoryKeeper") || $0.contentView != nil }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        // Use the environment action for settings
+        openSettingsAction()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

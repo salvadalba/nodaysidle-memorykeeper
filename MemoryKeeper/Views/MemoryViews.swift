@@ -187,19 +187,38 @@ struct MemoryCard: View {
 
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = false
+        options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
-        return await withCheckedContinuation { continuation in
+        var resultImage: NSImage?
+        for await image in loadImageStream(asset: asset, targetSize: CGSize(width: size.width * 2, height: size.height * 2), options: options) {
+            resultImage = image
+        }
+        return resultImage
+    }
+
+    private func loadImageStream(asset: PHAsset, targetSize: CGSize, options: PHImageRequestOptions) -> AsyncStream<NSImage> {
+        AsyncStream { continuation in
+            var hasFinished = false
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: size.width * 2, height: size.height * 2),
+                targetSize: targetSize,
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if !isDegraded {
-                    continuation.resume(returning: image)
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+
+                if let image = image {
+                    continuation.yield(image)
+                }
+
+                if !isDegraded || isCancelled || hasError {
+                    if !hasFinished {
+                        hasFinished = true
+                        continuation.finish()
+                    }
                 }
             }
         }
@@ -818,7 +837,16 @@ struct MemorySlideshowView: View {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
-        currentThumbnail = await withCheckedContinuation { continuation in
+        for await image in loadSlideshowImageStream(asset: asset, options: options) {
+            currentThumbnail = image
+        }
+
+        isLoadingImage = false
+    }
+
+    private func loadSlideshowImageStream(asset: PHAsset, options: PHImageRequestOptions) -> AsyncStream<NSImage> {
+        AsyncStream { continuation in
+            var hasFinished = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: CGSize(width: 1920, height: 1080),
@@ -826,13 +854,21 @@ struct MemorySlideshowView: View {
                 options: options
             ) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if !isDegraded {
-                    continuation.resume(returning: image)
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+
+                if let image = image {
+                    continuation.yield(image)
+                }
+
+                if !isDegraded || isCancelled || hasError {
+                    if !hasFinished {
+                        hasFinished = true
+                        continuation.finish()
+                    }
                 }
             }
         }
-
-        isLoadingImage = false
     }
 
     private func captionOverlay(_ text: String) -> some View {

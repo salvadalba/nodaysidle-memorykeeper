@@ -149,7 +149,7 @@ extension Color {
     // Semantic colors
     static let memoryGold = Color(red: 0.88, green: 0.75, blue: 0.45)
     static let memorySepia = Color(red: 0.45, green: 0.35, blue: 0.25)
-    static let memoryFaded = Color(red: 0.75, green: 0.72, blue: 0.68)
+    static let memoryFaded = Color(red: 0.55, green: 0.50, blue: 0.45) // Darker for better contrast
 
     // Shadow colors
     static let memoryShadow = Color.black.opacity(0.08)
@@ -158,9 +158,11 @@ extension Color {
     // Card backgrounds
     static let memoryCardBackground = Color(red: 1.0, green: 0.98, blue: 0.95)
 
-    // Text colors for overlays
+    // Text colors - READABLE on warm backgrounds
     static let memoryTextLight = Color.white.opacity(0.95)
-    static let memoryTextDark = Color(red: 0.25, green: 0.22, blue: 0.20)
+    static let memoryTextDark = Color(red: 0.15, green: 0.12, blue: 0.10) // Very dark brown
+    static let memoryTextPrimary = Color(red: 0.20, green: 0.18, blue: 0.15) // Primary text
+    static let memoryTextSecondary = Color(red: 0.40, green: 0.35, blue: 0.30) // Secondary text
 }
 
 // MARK: - Animation Extensions

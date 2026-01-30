@@ -72,7 +72,7 @@ struct SidebarView: View {
 
                 if categories.isEmpty {
                     Text("No categories yet")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.memoryTextSecondary)
                         .font(Typography.bodySmall)
                 }
             }

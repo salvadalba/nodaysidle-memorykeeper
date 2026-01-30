@@ -59,11 +59,12 @@ struct OnboardingView: View {
 
             Text("Welcome to MemoryKeeper")
                 .font(Typography.heroLarge)
+                .foregroundStyle(Color.memoryTextPrimary)
                 .multilineTextAlignment(.center)
 
             Text("Rediscover your forgotten photos and relive your memories")
                 .font(Typography.bodyLarge)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.memoryTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
@@ -82,6 +83,7 @@ struct OnboardingView: View {
 
             Text("What MemoryKeeper Does")
                 .font(Typography.heroSmall)
+                .foregroundStyle(Color.memoryTextPrimary)
 
             VStack(alignment: .leading, spacing: 20) {
                 featureRow(
@@ -127,10 +129,11 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(Typography.sectionSmall)
+                    .foregroundStyle(Color.memoryTextPrimary)
 
                 Text(description)
                     .font(Typography.bodySmall)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.memoryTextSecondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -150,10 +153,11 @@ struct OnboardingView: View {
 
             Text("Photo Library Access")
                 .font(Typography.heroSmall)
+                .foregroundStyle(Color.memoryTextPrimary)
 
             Text("MemoryKeeper needs access to your photos to analyze them locally on your device. Your photos never leave your Mac.")
                 .font(Typography.bodyMedium)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.memoryTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 60)
 
@@ -176,6 +180,7 @@ struct OnboardingView: View {
                     .foregroundStyle(.green)
                 Text("Access Granted")
                     .font(Typography.bodyMedium)
+                    .foregroundStyle(Color.memoryTextPrimary)
             }
             .padding()
             .accessibilityLabel("Photo library access granted")
@@ -213,7 +218,7 @@ struct OnboardingView: View {
                 .foregroundStyle(Color.memoryFaded)
             Text("All processing happens on-device. Your photos are never uploaded.")
                 .font(Typography.metadataSmall)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.memoryTextSecondary)
         }
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
@@ -233,10 +238,11 @@ struct OnboardingView: View {
 
             Text("You're All Set!")
                 .font(Typography.heroSmall)
+                .foregroundStyle(Color.memoryTextPrimary)
 
             Text("MemoryKeeper will now analyze your photos in the background. Check back soon to discover your forgotten memories.")
                 .font(Typography.bodyMedium)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.memoryTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 60)
 
@@ -349,15 +355,23 @@ struct OnboardingView: View {
 
 struct OnboardingContainerView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var photoAuthStatus: PHAuthorizationStatus = .notDetermined
 
     var body: some View {
-        if hasCompletedOnboarding {
-            ContentView()
-        } else {
-            OnboardingView(isPresented: Binding(
-                get: { !hasCompletedOnboarding },
-                set: { if !$0 { hasCompletedOnboarding = true } }
-            ))
+        Group {
+            if hasCompletedOnboarding && photoAuthStatus == .authorized {
+                ContentView()
+            } else if hasCompletedOnboarding && photoAuthStatus == .limited {
+                ContentView()
+            } else {
+                OnboardingView(isPresented: Binding(
+                    get: { !hasCompletedOnboarding },
+                    set: { if !$0 { hasCompletedOnboarding = true } }
+                ))
+            }
+        }
+        .onAppear {
+            photoAuthStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         }
     }
 }

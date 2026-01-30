@@ -79,6 +79,39 @@ MemoryKeeper/
 
 ---
 
+## User Guide
+
+### First Launch
+
+1. **Grant Photo Access**: When you first open MemoryKeeper, you'll be asked to grant access to your Photos library. Click "Grant Photo Access" and approve in the system dialog.
+
+2. **Wait for Import**: MemoryKeeper will scan your photo library in the background. You'll see a loading indicator with progress. This only happens once.
+
+3. **Explore Your Library**: Use the sidebar to navigate:
+   - **All Photos**: Browse your complete photo library in a grid
+   - **Memories**: View curated memory slideshows with Ken Burns transitions
+   - **Duplicates**: Review and clean up similar photos
+   - **Categories**: Photos organized by AI (People, Pets, Nature, etc.)
+
+### Using the App
+
+- **Photo Grid**: Click any photo to see it in the detail view. Use arrow keys for navigation.
+- **Memories**: Click a memory card to start a cinematic slideshow. Press Space to pause, Escape to exit.
+- **Duplicate Review**: Compare similar photos side-by-side. Choose which to keep.
+- **Refresh**: Click the refresh button in the toolbar to scan for new photos.
+
+### Troubleshooting
+
+**"Photo library access not granted"**
+- Open System Settings > Privacy & Security > Photos
+- Find MemoryKeeper and enable access
+
+**No photos appear after granting access**
+- Click the refresh button in the toolbar
+- Make sure you have photos in your Photos library
+
+---
+
 ## Privacy
 
 MemoryKeeper processes everything on-device:

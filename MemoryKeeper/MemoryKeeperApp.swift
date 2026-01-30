@@ -22,15 +22,18 @@ struct MemoryKeeperApp: App {
     var body: some Scene {
         WindowGroup {
             OnboardingContainerView()
+                .preferredColorScheme(.light) // Force light mode for warm nostalgic theme
         }
         .modelContainer(sharedModelContainer)
 
         Settings {
             SettingsView()
         }
+        .modelContainer(sharedModelContainer)
 
         MenuBarExtra("MemoryKeeper", systemImage: "photo.on.rectangle") {
             MenuBarView()
+                .modelContainer(sharedModelContainer)
         }
     }
 }

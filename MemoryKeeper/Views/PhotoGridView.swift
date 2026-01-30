@@ -94,9 +94,19 @@ struct PhotoGridView: View {
             }
         }
         .sheet(isPresented: $showDetail) {
-            if let photo = selectedPhoto {
-                PhotoDetailView(
-                    photo: photo,
+            if let photo = selectedPhoto,
+               let index = photos.firstIndex(where: { $0.assetIdentifier == photo.assetIdentifier }) {
+                PhotoNavigationView(
+                    photos: photos,
+                    currentIndex: .init(
+                        get: { index },
+                        set: { newIndex in
+                            if let newPhoto = photos[safe: newIndex] {
+                                selectedPhoto = newPhoto
+                                focusedIndex = newIndex
+                            }
+                        }
+                    ),
                     isPresented: $showDetail,
                     namespace: namespace
                 )
@@ -145,6 +155,8 @@ struct PhotoGridView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.memoryWarmLight)
+        .accessibilityLabel("Photo access denied")
+        .accessibilityHint("Open System Settings to grant photo library access")
     }
 
     private var requestPermissionState: some View {
@@ -188,6 +200,8 @@ struct PhotoGridView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.memoryWarmLight)
+        .accessibilityLabel("Photo library access not yet granted")
+        .accessibilityHint("Tap Grant Photo Access to allow access to your photo library")
     }
 
     private var emptyLibraryState: some View {
@@ -209,6 +223,8 @@ struct PhotoGridView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.memoryWarmLight)
+        .accessibilityLabel("Photo library is empty")
+        .accessibilityHint("Add photos to your library to see them here")
     }
 
     private func openPhotoPrivacySettings() {

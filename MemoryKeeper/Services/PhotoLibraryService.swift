@@ -124,40 +124,59 @@ actor PhotoLibraryService {
 // MARK: - Photo Library Observers
 
 private final class PhotoLibraryObserver: NSObject, PHPhotoLibraryChangeObserver, @unchecked Sendable {
-    private var onChange: ((PHAuthorizationStatus) -> Void)?
+    private let lock = NSLock()
+    private var _onChange: ((PHAuthorizationStatus) -> Void)?
 
     init(onChange: @escaping (PHAuthorizationStatus) -> Void) {
-        self.onChange = onChange
+        self._onChange = onChange
         super.init()
         PHPhotoLibrary.shared().register(self)
     }
 
     func stopObserving() {
+        lock.lock()
+        defer { lock.unlock() }
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
-        onChange = nil
+        _onChange = nil
     }
 
     func photoLibraryDidChange(_ changeInstance: PHChange) {
+        lock.lock()
+        let callback = _onChange
+        lock.unlock()
+
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        onChange?(status)
+        DispatchQueue.main.async {
+            callback?(status)
+        }
     }
 }
 
 private final class PhotoLibraryChangeObserver: NSObject, PHPhotoLibraryChangeObserver, @unchecked Sendable {
-    private var onChange: ((PHChange) -> Void)?
+    private let lock = NSLock()
+    private var _onChange: ((PHChange) -> Void)?
 
     init(onChange: @escaping (PHChange) -> Void) {
-        self.onChange = onChange
+        self._onChange = onChange
         super.init()
         PHPhotoLibrary.shared().register(self)
     }
 
     func stopObserving() {
+        lock.lock()
+        defer { lock.unlock() }
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
-        onChange = nil
+        _onChange = nil
     }
 
     func photoLibraryDidChange(_ changeInstance: PHChange) {
-        onChange?(changeInstance)
+        lock.lock()
+        let callback = _onChange
+        lock.unlock()
+
+        // Dispatch to main thread to avoid race conditions with SwiftUI
+        DispatchQueue.main.async {
+            callback?(changeInstance)
+        }
     }
 }

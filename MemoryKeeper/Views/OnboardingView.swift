@@ -355,13 +355,11 @@ struct OnboardingView: View {
 
 struct OnboardingContainerView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    @State private var photoAuthStatus: PHAuthorizationStatus = .notDetermined
 
     var body: some View {
         Group {
-            if hasCompletedOnboarding && photoAuthStatus == .authorized {
-                ContentView()
-            } else if hasCompletedOnboarding && photoAuthStatus == .limited {
+            if hasCompletedOnboarding {
+                // ContentView handles its own authorization checking and prompting
                 ContentView()
             } else {
                 OnboardingView(isPresented: Binding(
@@ -369,9 +367,6 @@ struct OnboardingContainerView: View {
                     set: { if !$0 { hasCompletedOnboarding = true } }
                 ))
             }
-        }
-        .onAppear {
-            photoAuthStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         }
     }
 }

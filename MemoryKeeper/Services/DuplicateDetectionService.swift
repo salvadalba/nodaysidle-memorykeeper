@@ -109,7 +109,8 @@ final class DuplicateDetectionService {
         let context = modelContainer.mainContext
 
         for assets in groups {
-            let group = DuplicateGroup()
+            // First collect the photos
+            var photosForGroup: [Photo] = []
 
             for asset in assets {
                 let assetId = asset.localIdentifier
@@ -120,12 +121,18 @@ final class DuplicateDetectionService {
                 )
 
                 if let photo = try? context.fetch(descriptor).first {
-                    group.photos.append(photo)
+                    photosForGroup.append(photo)
                 }
             }
 
-            if group.photos.count > 1 {
-                context.insert(group)
+            // Only create and insert group if we have multiple photos
+            if photosForGroup.count > 1 {
+                let group = DuplicateGroup()
+                context.insert(group)  // Insert BEFORE modifying relationships
+
+                for photo in photosForGroup {
+                    group.photos.append(photo)
+                }
             }
         }
 
